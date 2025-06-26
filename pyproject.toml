@@ -1,0 +1,17 @@
+[project]
+name = "sirna-pre-process"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Saranya Pal", email = "saranya.pal@nuvo.ai" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+sirna-pre-process = "sirna_pre_process:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
