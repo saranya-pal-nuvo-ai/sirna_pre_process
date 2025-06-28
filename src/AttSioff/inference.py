@@ -138,11 +138,10 @@ def generate_embeddings(seq_list, model, alphabet, batch_converter):
 
 
 
-def input_to_inference(data_path, mrna_path='/home/saranya/Cleaned_Up_pipelines/sirna_pre_process/data/TTR_mrna.fasta'):
+def input_to_inference(inp_df, mrna_path='/home/saranya/Cleaned_Up_pipelines/sirna_pre_process/data/TTR_mrna.fasta'):
     mRNA_seq = load_fasta(mrna_path)
     mrna_seq = ""
-    inp_df = pd.read_csv(data_path)
-
+    
 
     def extract_segment(start_pos: int) -> str:
         """Return 20 nt upstream + 19 nt site + 20 nt downstream (59 nt total)."""
@@ -181,12 +180,12 @@ def input_to_inference(data_path, mrna_path='/home/saranya/Cleaned_Up_pipelines/
 
 
 
-def load_RNAFM_and_data(data_path = '/home/saranya/Code/Si_RNA/Dataset/Training_And_Inference/End_To_End_results/Input_To_Inference_Pipeline.csv'):
+def load_RNAFM_and_data(df):
 
-    data = input_to_inference(data_path)
+    data = input_to_inference(df)
 
-    data = pd.read_csv(data_path)
-    n = len(data)
+    # data = pd.read_csv(data_path)
+    # n = len(data)
 
     cache_model_path = check_model_cache()
     model, alphabet, batch_converter = load_rna_fm_fast(cache_model_path)
@@ -244,7 +243,7 @@ def process_mRNA_embeds(mRNA_embeddings):
 
 #   MAIN INFERENCE SECTION
 
-def perform_inference():
+def perform_inference(pre_df):
 
     NUM_EXAMPLES = 1000
 
@@ -257,7 +256,7 @@ def perform_inference():
 
     print(f"Loaded model weights from {best_ckpt_path}")
 
-    siRNA_seq, siRNA_embeds, mRNA_embeds = load_RNAFM_and_data()
+    siRNA_seq, siRNA_embeds, mRNA_embeds = load_RNAFM_and_data(pre_df)
     sirna_embed_tensor = process_siRNA_embeds(siRNA_embeds)[:NUM_EXAMPLES]   # [B, L_max1, D]
     mrna_embed_tensor  = process_mRNA_embeds(mRNA_embeds)[:NUM_EXAMPLES]     # [B, L_max2, D]
     siRNA_seq = siRNA_seq[:NUM_EXAMPLES]
