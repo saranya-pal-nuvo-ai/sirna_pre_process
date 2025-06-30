@@ -6,6 +6,7 @@ from src.AttSioff.inference import perform_inference
 
 
 
+
 if __name__ == '__main__':
     fasta_path = '/home/saranya/Cleaned_Up_pipelines/sirna_pre_process/data/TTR_mrna.fasta'
 
