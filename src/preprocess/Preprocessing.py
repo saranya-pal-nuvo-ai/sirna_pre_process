@@ -74,8 +74,8 @@ def extract_accessibility_df(fasta_file, siRNA_length, mode, out_dir=None):
     """
     Runs plfold, moves outputs into out_dir, parses .lunp, returns DataFrame.
     """
-    # lunp_path, _ = run_rnaplfold(fasta_file, max_unpaired=siRNA_length, out_dir=out_dir)
-    lunp_path= '/home/saranya/Cleaned_Up_pipelines/sirna_pre_process/data/NM_000371.4_lunp'
+    lunp_path, _ = run_rnaplfold(fasta_file, max_unpaired=siRNA_length, out_dir=out_dir)
+    # lunp_path= '/home/saranya/Cleaned_Up_pipelines/sirna_pre_process/data/NM_000371.4_lunp'
     with open(fasta_file) as f:
         seq = ''.join(line.strip() for line in f if not line.startswith('>'))
 
