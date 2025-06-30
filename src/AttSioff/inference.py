@@ -180,6 +180,7 @@ def input_to_inference(inp_df, mRNA_seq):
 
 
 def load_RNAFM_and_data(data_pre, mRNA_seq, CACHE_PATH):
+    
 
     data = input_to_inference(data_pre, mRNA_seq)
 
@@ -241,7 +242,7 @@ def process_mRNA_embeds(mRNA_embeddings):
 
 def perform_inference(df_pre, mRNA_seq, MODEL_PATH, CACHE_PATH):
 
-    NUM_EXAMPLES = 1000
+    # NUM_EXAMPLES = 1000
 
     # CAN SWITCH TO ANY OF THE SAVED 8 WEIGHTS OF THE MODEL
     model = RNAFM_SIPRED_2(dp=0.1, device=device).to(torch.float32).to(device)
@@ -249,11 +250,11 @@ def perform_inference(df_pre, mRNA_seq, MODEL_PATH, CACHE_PATH):
     model.eval()
 
     print(f"Loaded model weights from {MODEL_PATH}")
-
+    
     siRNA_seq, siRNA_embeds, mRNA_embeds = load_RNAFM_and_data(df_pre, mRNA_seq, CACHE_PATH)
-    sirna_embed_tensor = process_siRNA_embeds(siRNA_embeds)[:NUM_EXAMPLES]   # [B, L_max1, D]
-    mrna_embed_tensor  = process_mRNA_embeds(mRNA_embeds)[:NUM_EXAMPLES]     # [B, L_max2, D]
-    siRNA_seq = siRNA_seq[:NUM_EXAMPLES]
+    sirna_embed_tensor = process_siRNA_embeds(siRNA_embeds)   # [B, L_max1, D]
+    mrna_embed_tensor  = process_mRNA_embeds(mRNA_embeds)    # [B, L_max2, D]
+    siRNA_seq = siRNA_seq
 
 
     gc_sterch, gc_precent, single_com, di_com, tri_com, second_struct, pssm_score, gibbs = prepare_prior_knowledge_features(siRNA_seq)

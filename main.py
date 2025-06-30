@@ -38,7 +38,11 @@ if __name__ == '__main__':
     mode = args.mode
 
     df_pre = extract_accessibility_df(FASTA_FILE_PATH, N, mode, OUTPUT_DIR)
+    # print(df_pre.head())
     df_pre_process = Filters(df_pre).compute_confidence()
+    # print('-'*20)
+    # print(df_pre_process.columns)
+
 
     df = perform_inference(df_pre_process, mRNA_seq, MODELS_DIR, CACHE_PATH)
 
@@ -51,8 +55,9 @@ if __name__ == '__main__':
     merged_df['Confidence_Score'] = df_pre_process['Confidence_Score']
 
     merged_df = merged_df[['Antisense', 'Start_Position', 'Accessibility_Prob', 'Ui_Tei_Norm', 'Reynolds_Norm', 'Amarzguioui_Norm', 'Confidence_Score', 'Predicted_inhibition', 'GC Percent', 'Tm_value']]
+    merged_df = merged_df.sort_values(by='Predicted_inhibition', ascending=False)
 
     # print(df.shape)
-    # print(merged_df.head(10))
+    print(merged_df.head(10))
 
-    merged_df.to_csv(DATA_DIR + "/" + "inference_score_results.csv")
+    merged_df.to_csv(OUTPUT_DIR + "/" + "ALAS1_v1.csv")
