@@ -3,6 +3,7 @@ import fm
 import torch
 # import RNA
 import argparse
+import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 from tqdm.auto import tqdm
@@ -11,7 +12,7 @@ import torch.nn.functional as F
 from src.AttSioff.model import RNAFM_SIPRED_2
 from torch.nn.utils.rnn import pad_sequence
 from src.AttSioff.utils import get_gc_sterch, get_gc_percentage, get_single_comp_percent, get_di_comp_percent, get_tri_comp_percent
-from src.AttSioff.utils import secondary_struct, score_seq_by_pssm, gibbs_energy, create_pssm
+from src.AttSioff.utils import secondary_struct, score_seq_by_pssm, gibbs_energy, create_pssm, calculate_Tm
 
 
 
@@ -290,7 +291,16 @@ def perform_inference(df_pre, mRNA_seq, MODEL_PATH, CACHE_PATH):
     out_df = pd.DataFrame({
         "Antisense": siRNA_seq,
         "Predicted_inhibition": preds,
+        "GC Percent": gc_precent,
+
     })
+
+    out_df['GC Percent'] = (
+        out_df['GC Percent']
+        .apply(lambda v: float(np.squeeze(v)))   # np.squeeze removes all singleton dims/lists
+    ) * 100
+
+    out_df['Tm_value'] = out_df['Antisense'].apply(calculate_Tm)
 
     print("Inference complete")
 

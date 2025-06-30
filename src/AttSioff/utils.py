@@ -1,4 +1,5 @@
 import pdb
+import math
 import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
@@ -8,6 +9,47 @@ import RNA      # Error
 import sklearn
 import subprocess
 import os
+
+
+
+
+def calculate_Tm(sequence: str, ct_molar: float = 1e-6, na_molar: float = 0.15):  # 1, 
+
+    NN = {
+    'AA': (6.82, 19.0),  'AU': (9.38, 26.7),  'UA': (7.69, 20.5),  'CA': (10.44, 26.9),
+    'CU': (10.48, 27.1), 'GA': (12.44, 32.5), 'GC': (15.37, 41.2), 'GG': (15.37, 41.2),
+    'GU': (11.36, 29.5), 'UG': (11.36, 29.5), 'UU': (6.82, 19.0),  'AG': (12.44, 32.5),
+    'AC': (10.44, 26.9), 'CG': (14.88, 36.9), 'UC': (10.48, 27.1), 'CC': (15.37, 41.2)
+    }
+
+    R = 1.987  # cal mol-1 K-1
+    INIT_H, INIT_S = 3.61, 11.6           # initiation
+    AU_END_H, AU_END_S = 0.45, 1.6        # AU/UA end penalty
+
+
+    seq = sequence.upper().replace('T', 'U')
+    dh = INIT_H  # kcal
+    ds = INIT_S  # cal/K
+
+    # stacking contributions
+    for dinuc in (seq[i:i+2] for i in range(len(seq)-1)):
+        h, s = NN[dinuc]
+        dh += h
+        ds += s
+
+    # AU / UA at each end
+    for end in (seq[0:2], seq[-2:]):
+        if end in ('AU', 'UA'):
+            dh += AU_END_H
+            ds += AU_END_S
+
+    dh *= 1000  # → cal
+    ln_ct = math.log(ct_molar/4.0)     # duplex, non-self-compl.
+    tm_k = dh / (ds + R*ln_ct)
+    tm_c = tm_k - 273.15
+    # monovalent-salt correction
+    tm_c += 16.6 * math.log10(na_molar)
+    return round(tm_c, 2)
 
 
 
