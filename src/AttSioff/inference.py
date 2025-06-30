@@ -1,7 +1,7 @@
 import os
 import fm
 import torch
-# import RNA
+import RNA
 import argparse
 import pandas as pd
 from tqdm.auto import tqdm
@@ -92,7 +92,7 @@ def check_model_cache() -> str:
     if cache_path.exists():
         return str(cache_path)
     else:
-        raise FileNotFoundError(f"Cached model not found at: {cache_path}")
+        return None
    
 
 
@@ -138,7 +138,7 @@ def generate_embeddings(seq_list, model, alphabet, batch_converter):
 
 
 
-def input_to_inference(inp_df, mrna_path='/home/saranya/Cleaned_Up_pipelines/sirna_pre_process/data/TTR_mrna.fasta'):
+def input_to_inference(inp_df, mrna_path='/home/somya/drugdiscovery/siRNA/sirna_pre_process/data/TTR_mrna.fasta'):
     mRNA_seq = load_fasta(mrna_path)
     mrna_seq = ""
     
@@ -170,7 +170,7 @@ def input_to_inference(inp_df, mrna_path='/home/saranya/Cleaned_Up_pipelines/sir
     df = inp_df.loc[valid_starts].copy()    
 
     df["mrna"] = df["Start_Position"].apply(extract_segment)
-    df = df[['Antisense', 'mrna', '21_mer_Sequence', 'Start_Position', 'Accessibility_Prob', 'Ui-Tei_Norm', 'Reynolds_Norm', 'Amarzguioui_Norm', 'Confidence_Score']]
+    df = df[['Antisense', 'mrna', 'Sense', 'Start_Position', 'Accessibility_Prob', 'Ui-Tei_Norm', 'Reynolds_Norm', 'Amarzguioui_Norm', 'Confidence_Score']]
     # df = df.rename(columns={'Antisense_siRNA': 'Antisense'})
 
     return df
@@ -198,6 +198,9 @@ def load_RNAFM_and_data(df):
     mRNA_embeddings = generate_embeddings(mRNA_seq, model, alphabet, batch_converter)
 
     return siRNA_seq, siRNA_embeddings, mRNA_embeddings
+
+    
+
 
 
 
@@ -249,7 +252,7 @@ def perform_inference(pre_df):
 
     # CAN SWITCH TO ANY OF THE SAVED 8 WEIGHTS OF THE MODEL
 
-    best_ckpt_path = "/home/saranya/Cleaned_Up_pipelines/sirna_pre_process/src/AttSioff/model_weights/9-inter/model_9-inter.pth.tar"
+    best_ckpt_path = "/home/somya/drugdiscovery/siRNA/sirna_pre_process/src/AttSioff/model_weights/9-inter/model_9-inter.pth.tar"
     model = RNAFM_SIPRED_2(dp=0.1, device=device).to(torch.float32).to(device)
     model.load_state_dict(torch.load(best_ckpt_path, map_location=device), strict=True)
     model.eval()
@@ -293,10 +296,18 @@ def perform_inference(pre_df):
             score = model(inp)          
             preds.append(score.item())
 
-
+    data = input_to_inference(pre_df)
     out_df = pd.DataFrame({
         "Antisense": siRNA_seq,
         "Predicted_inhibition": preds,
+        'Accessibility_Prob':data['Accessibility_Prob'],
+        'Start_Position':data['Start_Position'],
+        'Sense':data['Sense'],
+        'Antisense':data['Antisense'],
+        'Ui-Tei_Norm':data['Ui-Tei_Norm'],
+        'Reynolds_Norm':data['Reynolds_Norm'],
+        'Amarzguioui_Norm':data['Amarzguioui_Norm'],
+        'Confidence_Score':data['Confidence_Score']
     })
 
     print("Inference complete")
@@ -310,7 +321,7 @@ def perform_inference(pre_df):
 if __name__ == '__main__':
 
     df = perform_inference()
-    results_dir = Path("/home/saranya/Cleaned_Up_pipelines/sirna_pre_process/src/AttSioff/Inference_outputs (temp)")
+    results_dir = Path("sirna_pre_process/")
     results_dir.mkdir(parents=True, exist_ok=True)
     df.to_csv(results_dir / "inference_results.csv", index=False)
     print(f"Saved inference results to {results_dir / 'inference_results.csv'}")

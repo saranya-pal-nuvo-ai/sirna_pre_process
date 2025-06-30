@@ -177,9 +177,24 @@ def combine():
     fasta_path=os.path.join(data_folder,fasta_file)
     if not os.path.isfile(fasta_path): raise FileNotFoundError(f"FASTA not found: {fasta_path}")
 
-    N=int(input("siRNA length (e.g.19,21,23): ").strip())
+    user_input = input("siRNA length (e.g.19,21,23): ").strip()
+
+    if user_input == '':
+        N = 19
+    else:
+        try:
+            N = int(user_input)
+            if N < 19 or N > 24:
+                print("Input out of range (19-24). Defaulting to 19.")
+                N = 19
+        except ValueError:
+            print("Invalid input. Defaulting to 19.")
+            N = 19
+
+    print("Using siRNA length:", N)
+
     mode=input("Mode ('single' or 'joint'): ").strip().lower()
-    if mode not in('single','joint'): raise ValueError("Mode must be 'single' or 'joint'")
+    if mode not in('single','joint'): mode='joint'  # default to joint if invalid input
 
     # extract and place plfold outputs in data_folder
     df_access=extract_accessibility_df(fasta_path,N,mode,out_dir=data_folder)
