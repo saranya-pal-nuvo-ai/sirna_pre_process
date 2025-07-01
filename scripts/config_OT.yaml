@@ -1,0 +1,18 @@
+paths:
+  INPUT_FASTA: "../data/human_all.rna.fna"
+  BLAST_DB_DIR: "../H_Sapien_blast_db_1"
+  BLAST_DB_PREFIX: "../H_Sapien_blast_db/H_Sapien_mrna_db"
+
+  INFERENCE_CSV_PATH: "../data/inference_score_results.csv"
+  SIRNA_FASTA_PATH: "../data/sirna.fa"
+
+  # QUERY: SIRNA_FASTA_PATH
+  # DB : BLAST_DB_PREFIX
+  BLAST_OUTPUT_TSV: "../data/sirna_blast_results.tsv"
+
+  siRNA_OTE_summary_output_path: "../data/top_k_siRNA_OffTargetEffect_Summary.csv"
+  siRNA_OTE_ntseq_added_output_path : "../data/top_k_siRNA_OTE_ntSeq_added_Summary.csv"
+  design_output_path: "../data/siRNA_Design.csv"
+parameters:
+  
+  column_name: "Antisense"
