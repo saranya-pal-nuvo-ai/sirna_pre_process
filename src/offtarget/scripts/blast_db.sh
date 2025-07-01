@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Define paths
-INPUT_FASTA="../data/human_all.rna.fna"
-BLAST_DB_DIR="../H_Sapien_blast_db_1"
+INPUT_FASTA="/data/human_all.rna.fna"
+BLAST_DB_DIR="src/offtarget/H_Sapien_blast_db"
 BLAST_DB_PREFIX="$BLAST_DB_DIR/H_Sapien_mrna_db"
 
 # Create output directory if it doesn't exist

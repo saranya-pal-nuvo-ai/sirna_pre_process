@@ -15,8 +15,12 @@ def run_blast_db_script(blast_db_prefix):
         print(f"✅ BLAST DB already exists at: {blast_db_prefix}.* — skipping database creation.")
     else:
         print("▶️ BLAST DB not found — running blast_db.sh to create it...")
+        # Get the directory where this Python file lives:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        print(f"Running blast_db.sh from: {script_dir}")
+        blast_db_path = os.path.join(script_dir, "blast_db.sh")
         try:
-            result = subprocess.run(["bash", "blast_db.sh"], check=True, capture_output=True, text=True)
+            result = subprocess.run(["bash", blast_db_path], check=True, capture_output=True, text=True)
             print(result.stdout)
             print("✅ blast_db.sh executed successfully.")
         except subprocess.CalledProcessError as e:

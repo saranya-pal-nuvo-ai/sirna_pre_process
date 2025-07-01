@@ -10,6 +10,7 @@ def run_blast(fasta_path, db_prefix, output_path):
 
     print("▶️ Running BLASTN alignment...")
 
+
     cmd = [
         "blastn",
         "-task", "blastn-short",
