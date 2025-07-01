@@ -172,7 +172,7 @@ class Filters:
 
 
 def combine():
-    data_folder="/home/somya/drugdiscovery/siRNA/siRNA_Pipeline/data/"
+    data_folder="/home/somya/drugdiscovery/siRNA/sirna_pre_process/data"
     fasta_file=input("Enter the FASTA filename (e.g. TTR_mrna.fasta): ").strip()
     fasta_path=os.path.join(data_folder,fasta_file)
     if not os.path.isfile(fasta_path): raise FileNotFoundError(f"FASTA not found: {fasta_path}")
@@ -207,7 +207,7 @@ def combine():
         print(f"✅ Saved CSV to {out_csv} ({len(df_final)} rows)")
     else:
         # print(df_final.to_string(index=False))
-        return df_final  # return DataFrame for further processing if needed
+        return df_final , fasta_file # return DataFrame for further processing if needed
 
 if __name__=="__main__":
     combine()
