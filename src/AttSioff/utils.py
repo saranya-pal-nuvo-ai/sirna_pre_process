@@ -9,106 +9,100 @@ import RNA      # Error
 import sklearn
 import subprocess
 import os
-from typing import Tuple
+from typing import Tuple, Optional
 
-def calculate_Tm(sequence: str, strand_conc: float = 2.0e-4) -> float:
+
+
+def calculate_Tm(sequence: str,
+                 strand_conc: float = 2.0e-4,
+                 start_pos: int = 0,
+                 end_pos: Optional[int] = None) -> float:
     """
-    Predict the melting temperature (°C) of a perfectly complementary
-    RNA duplex 19–23 nt long using the INN-HB nearest-neighbor model
-    (Xia et al., 1998, 1 M NaCl, pH 7).
+    Melting temperature (°C) of an RNA duplex segment using the
+    INN-HB nearest-neighbor model (Xia et al., 1998; 1 M NaCl, pH 7).
 
     Parameters
     ----------
-    sequence : str
-        5'→3' RNA sequence containing only A,U,G,C
-        (any 'T' is treated as 'U').
-    strand_conc : float, optional
-        Total concentration of *single* strands in mol L⁻¹
-        (default = 0.2 mM).
+    sequence   : full 5'→3' RNA (A,U,G,C; T→U is accepted)
+    strand_conc: total single-strand concentration (M), default 0.2 mM
+    start_pos  : 0-based index of first base to include (default 0)
+    end_pos    : index *after* the last base (Python-slice style).
+                 Default = len(sequence).
 
-    Returns
+    Notes
+    -----
+    • Validated lengths: 4–10 nt (paper); practical use up to 23 nt
+      is common but unverified.
+    • For internal windows the result is for an isolated mini-duplex.
+
+    Warning
     -------
-    float
-        Predicted melting temperature in °C.
+    The INN-HB parameters are rock-solid for 4–10 bp duplexes in 1 M NaCl.
+    For full-length siRNA (19–23 bp) or for internal 6–8 bp windows you obtain a reasonable first approximation, but there is no experimental proof the ±1.3 °C error still holds.
+    
     """
 
-    # ----------------- helper utilities (scope-local) ---------------- #
-    def _complement(base: str) -> str:
-        return {"A": "U", "U": "A", "T": "A", "G": "C", "C": "G"}[base]
 
-    def _dimer_key(x: str, y: str) -> str:
-        """
-        Return the canonical key for dimer XY | WV.
-        Orientation is chosen so the key matches the 10 entries in NN_PARAMS.
-        """
-        # canonical orientation
-        key1 = f"{x}{y}/{_complement(x)}{_complement(y)}"
-        if key1 in NN_PARAMS:
-            return key1
-        # reverse-complement orientation (covers the remaining 6 XY steps)
-        key2 = f"{_complement(y)}{_complement(x)}/{y}{x}"
-        if key2 in NN_PARAMS:
-            return key2
-        raise ValueError(f"Unrecognized nearest-neighbor step: {x}{y}")
+    seq_full = sequence.upper().replace('T', 'U')
+    end_pos = len(seq_full) if end_pos is None else end_pos
 
-    def _count_terminal_au(seq: str) -> int:
-        """
-        Count AU or UA base pairs at each duplex end (0, 1 or 2).
-        """
-        first_pair = {seq[0], _complement(seq[-1])}
-        last_pair  = {seq[-1], _complement(seq[0])}
-        return sum(pair <= {"A", "U"} for pair in (first_pair, last_pair))
-
-    def _nearest_neighbor_sum(seq: str) -> Tuple[float, float]:
-        """
-        Sum ΔH and ΔS (kcal mol⁻¹  /  cal K⁻¹ mol⁻¹) over (n-1) stacked dimers.
-        """
-        dH = dS = 0.0
-        for i in range(len(seq) - 1):
-            h, s = NN_PARAMS[_dimer_key(seq[i], seq[i + 1])]
-            dH += h
-            dS += s
-        return dH, dS
-    # ---------------------------------------------------------------- #
-
-    # ---- constants ---- #
-    R = 1.987  # cal K⁻¹ mol⁻¹
-
-    NN_PARAMS = {
-        "AA/UU": (-6.82, -19.0),
-        "AU/UA": (-9.38, -26.7),
-        "UA/AU": (-7.69, -20.5),
-        "CU/GA": (-10.48, -27.1),
-        "CA/GU": (-10.44, -26.9),
-        "GU/CA": (-11.40, -29.5),
-        "GA/CU": (-12.44, -32.5),
-        "CG/GC": (-10.64, -26.7),
-        "GG/CC": (-13.39, -32.7),
-        "GC/CG": (-14.88, -36.9),
-    }
-
-    INITIATION = ( +3.61,  -1.5)   # ΔH (kcal), ΔS (cal K⁻¹)
-    TERMINAL_AU = (+3.72, +10.5)   # penalty per AU/UA end
-
-    # ---- input sanitization ---- #
-    seq = sequence.upper().replace("T", "U")
-    if not (19 <= len(seq) <= 23):
-        raise ValueError("Sequence length must be 19–23 nt for siRNA.")
+    if not 0 <= start_pos < end_pos <= len(seq_full):
+        raise ValueError("start_pos/end_pos indices out of range")
+    seq = seq_full[start_pos:end_pos]
+    if len(seq) < 4:
+        raise ValueError("Sub-duplex must be at least 4 nt long")
     if any(b not in "AUGC" for b in seq):
-        raise ValueError("Sequence contains invalid nucleotides (allowed: A,U,G,C).")
+        raise ValueError("Invalid nucleotide in sequence")
 
-    # ---- thermodynamic sums ---- #
-    dH, dS = _nearest_neighbor_sum(seq)            # nearest-neighbor stacks
-    dH += INITIATION[0];  dS += INITIATION[1]      # initiation
-    n_au = _count_terminal_au(seq)                 # terminal AU penalties
-    dH += n_au * TERMINAL_AU[0]
-    dS += n_au * TERMINAL_AU[1]
 
-    # ---- convert & compute Tm ---- #
-    dH_cal = dH * 1000.0                           # kcal → cal
-    Tm_K = dH_cal / (dS + R * math.log(strand_conc / 4.0))  # a = 4 (non-self-comp.)
+
+    R = 1.987  # cal K⁻¹ mol⁻¹
+    NN = {     # ΔH (kcal mol⁻¹), ΔS (cal K⁻¹ mol⁻¹)
+        "AA/UU": (-6.82, -19.0), "AU/UA": (-9.38, -26.7),
+        "UA/AU": (-7.69, -20.5), "CU/GA": (-10.48, -27.1),
+        "CA/GU": (-10.44, -26.9), "GU/CA": (-11.40, -29.5),
+        "GA/CU": (-12.44, -32.5), "CG/GC": (-10.64, -26.7),
+        "GG/CC": (-13.39, -32.7), "GC/CG": (-14.88, -36.9),
+    }
+    INIT   = (+3.61,  -1.5)   
+    TERM_AU = (+3.72, +10.5) 
+
+
+    comp = {"A":"U","U":"A","G":"C","C":"G"}
+
+    def dimer_key(x: str, y: str) -> str:
+        """Return a key that is guaranteed to be in NN."""
+        key = f"{x}{y}/{comp[x]}{comp[y]}"
+        if key in NN:
+            return key
+     
+        key_rc = f"{comp[y]}{comp[x]}/{y}{x}"
+        if key_rc in NN:
+            return key_rc
+        raise ValueError(f"Unrecognised dimer {x}{y}")
+ 
+
+
+    def terminal_au_penalty(s: str) -> int:
+        return int(s[0] in "AU") + int(s[-1] in "AU")
+
+
+    dH = dS = 0.0
+    for i in range(len(seq) - 1):
+        key = dimer_key(seq[i], seq[i+1])
+        try:
+            h, s = NN[key]
+        except KeyError:
+            raise ValueError(f"Unrecognized dimer {key}")
+        dH += h; dS += s
+
+   
+
+    dH += INIT[0] + terminal_au_penalty(seq) * TERM_AU[0]
+    dS += INIT[1] + terminal_au_penalty(seq) * TERM_AU[1]
+    Tm_K = (dH*1000.0) / (dS + R*math.log(strand_conc/4.0))
+
     return Tm_K - 273.15
-
 
 
 
@@ -199,15 +193,18 @@ def score_seq_by_pssm(pssm, seq):  # 1,
     log_score = sum([-math.log2(i) for i in scores])
     return np.array([log_score])[:, np.newaxis]
 
-def gibbs_energy(seq):  # 20 
+
+def gibbs_energy(seq):  # 20    #    
+
     energy_dict = {'A': 0, 'C': 1, 'G': 2, 'U': 3, 'table': np.array(
         [[-0.93, -2.24, -2.08, -1.1],
          [-2.11, -3.26, -2.36, -2.08],
          [-2.35, -3.42, -3.26, -2.24],
          [-1.33, -2.35, -2.11, -0.93]])}
+    
 
     result = []
-    for i in range(len(seq)-1):
+    for i in range(len(seq) - 1): 
         index_1 = energy_dict.get(seq[i])
         index_2 = energy_dict.get(seq[i + 1])
         result.append(energy_dict['table'][index_1, index_2])

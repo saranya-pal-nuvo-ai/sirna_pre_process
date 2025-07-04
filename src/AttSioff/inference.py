@@ -97,6 +97,7 @@ def check_model_cache(CACHE_PATH) -> str:
    
 
 
+
 def load_rna_fm_fast(model_path=None):
     torch.serialization.add_safe_globals([argparse.Namespace])
 
@@ -111,6 +112,7 @@ def load_rna_fm_fast(model_path=None):
 
     batch_converter = alphabet.get_batch_converter()
     return model, alphabet, batch_converter
+
 
 
 
@@ -172,7 +174,7 @@ def input_to_inference(inp_df, mRNA_seq):
     df = df[['Antisense', 'mrna', 'Start_Position', 'Accessibility_Prob', 'Ui-Tei_Norm', 'Reynolds_Norm', 'Amarzguioui_Norm', 'Confidence_Score']]
     # df = df.rename(columns={'Antisense_siRNA': 'Antisense'})
 
-    return df
+    return df, UP_LEN, SI_LEN, DOWN_LEN, MRNA_LEN
 
 
 
@@ -182,7 +184,7 @@ def input_to_inference(inp_df, mRNA_seq):
 def load_RNAFM_and_data(data_pre, mRNA_seq, CACHE_PATH):
     
 
-    data = input_to_inference(data_pre, mRNA_seq)
+    data, UP_LEN, SI_LEN, DOWN_LEN, MRNA_LEN = input_to_inference(data_pre, mRNA_seq)
 
     cache_model_path = check_model_cache(CACHE_PATH)
     model, alphabet, batch_converter = load_rna_fm_fast(cache_model_path)
@@ -194,7 +196,7 @@ def load_RNAFM_and_data(data_pre, mRNA_seq, CACHE_PATH):
     siRNA_embeddings = generate_embeddings(siRNA_seq, model, alphabet, batch_converter)
     mRNA_embeddings = generate_embeddings(mRNA_seq, model, alphabet, batch_converter)
 
-    return siRNA_seq, siRNA_embeddings, mRNA_embeddings
+    return siRNA_seq, siRNA_embeddings, mRNA_embeddings, UP_LEN, SI_LEN, DOWN_LEN, MRNA_LEN
 
 
 
@@ -251,7 +253,7 @@ def perform_inference(df_pre, mRNA_seq, MODEL_PATH, CACHE_PATH):
 
     print(f"Loaded model weights from {MODEL_PATH}")
     
-    siRNA_seq, siRNA_embeds, mRNA_embeds = load_RNAFM_and_data(df_pre, mRNA_seq, CACHE_PATH)
+    siRNA_seq, siRNA_embeds, mRNA_embeds, UP_LEN, SI_LEN, DOWN_LEN, MRNA_LEN = load_RNAFM_and_data(df_pre, mRNA_seq, CACHE_PATH)
     sirna_embed_tensor = process_siRNA_embeds(siRNA_embeds)   # [B, L_max1, D]
     mrna_embed_tensor  = process_mRNA_embeds(mRNA_embeds)    # [B, L_max2, D]
     siRNA_seq = siRNA_seq
@@ -289,12 +291,29 @@ def perform_inference(df_pre, mRNA_seq, MODEL_PATH, CACHE_PATH):
             preds.append(score.item())
 
 
+    valid_idx = df_pre["Start_Position"].between(
+        UP_LEN + 1,                                  # 20  (1-based)
+        MRNA_LEN - SI_LEN - DOWN_LEN                 # MRNA_LEN-38
+    )
+
+    meta_df = (
+        df_pre.loc[valid_idx]        # drop rows outside valid window
+            .reset_index(drop=True)
+            .iloc[:len(siRNA_seq)] # guard against any extra trimming
+    )
+
     out_df = pd.DataFrame({
         "Antisense": siRNA_seq,
+        "Start_Position": meta_df['Start_Position'],
+        "Accessibility_Prob": meta_df['Accessibility_Prob'],
+        "Ui_Tei_Norm": meta_df['Ui-Tei_Norm'],
+        "Reynolds_Norm": meta_df['Reynolds_Norm'],
+        "Amarzguioui_Norm": meta_df['Amarzguioui_Norm'],
+        "Confidence_Score": meta_df['Confidence_Score'],
         "Predicted_inhibition": preds,
-        "GC Percent": gc_precent,
-
+        "GC Percent": gc_precent
     })
+
 
     out_df['GC Percent'] = (
         out_df['GC Percent']
@@ -302,8 +321,15 @@ def perform_inference(df_pre, mRNA_seq, MODEL_PATH, CACHE_PATH):
     ) * 100
 
     out_df['Tm_value'] = out_df['Antisense'].apply(calculate_Tm)
+    out_df["Tm_seed_2_8"] = out_df["Antisense"].apply(
+        lambda seq: calculate_Tm(seq, start_pos=1, end_pos=9)
+    )
+
+
+    out_df = out_df.sort_values(by='Predicted_inhibition', ascending=False)
 
     print("Inference complete")
+    
 
     return out_df
 

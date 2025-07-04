@@ -115,6 +115,7 @@ class Filters:
     def __init__(self, df, weights=None):
         self.df = df.copy()
         self.weights = weights or {'ui_tei': 3, 'reynolds': 2, 'amarzguioui': 1}
+
     @staticmethod
     def reynolds_score(sense):
         score=0
@@ -129,6 +130,7 @@ class Filters:
         if sense[18] in ('G','C'): score-=1
         if sense[12]=='G': score-=1
         return score
+    
     @staticmethod
     def ui_tei_score(antisense):
         score=0
@@ -138,6 +140,7 @@ class Filters:
         gc_stretch=any(k and l>=10 for k,grp in itertools.groupby(antisense,lambda x:x in('G','C')) for l in[sum(1 for _ in grp)])
         score+= -1 if gc_stretch else 1
         return score
+    
     @staticmethod
     def amarzguioui_score(sense):
         score=0
@@ -149,6 +152,16 @@ class Filters:
         if sense[5]=='A': score+=1
         if sense[18] in ('A','U','T'): score+=1
         return score
+    
+
+    @staticmethod
+    def dr_ramya(sense, antisense):
+        pass
+
+
+    @staticmethod
+    def dr_bhaskar(sense, antisense):
+        pass
     
     
 
