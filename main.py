@@ -60,4 +60,4 @@ if __name__ == '__main__':
     # print(df.shape)
     print(merged_df.head(10))
 
-    merged_df.to_csv(OUTPUT_DIR + "/" + "ALAS1_v4.csv")
+    merged_df.to_csv(OUTPUT_DIR + "/" + "SERPINC1_v7.csv")

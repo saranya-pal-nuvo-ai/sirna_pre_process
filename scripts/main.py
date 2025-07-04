@@ -5,10 +5,12 @@ from sirna_csv_to_FASTA import csv_to_fasta
 from run_blastn import run_blast
 from process_tsv_file import process_blast_results
 
+
 def load_config(config_path = "config_OT.yaml"):
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
     
+
 def run_blast_db_script(blast_db_prefix):
     nsq_file = blast_db_prefix + ".nsq"
     if os.path.exists(nsq_file):
@@ -23,6 +25,7 @@ def run_blast_db_script(blast_db_prefix):
             print("❌ Error running blast_db.sh:")
             print(e.stderr)
             raise
+
 
 def main():
     config = load_config()

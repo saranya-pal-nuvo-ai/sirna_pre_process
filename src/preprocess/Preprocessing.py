@@ -149,6 +149,9 @@ class Filters:
         if sense[5]=='A': score+=1
         if sense[18] in ('A','U','T'): score+=1
         return score
+    
+    
+
     def compute_confidence(self):
         out=[]
         tw=sum(self.weights.values())

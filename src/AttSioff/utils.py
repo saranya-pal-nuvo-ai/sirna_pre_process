@@ -9,47 +9,107 @@ import RNA      # Error
 import sklearn
 import subprocess
 import os
+from typing import Tuple
 
+def calculate_Tm(sequence: str, strand_conc: float = 2.0e-4) -> float:
+    """
+    Predict the melting temperature (°C) of a perfectly complementary
+    RNA duplex 19–23 nt long using the INN-HB nearest-neighbor model
+    (Xia et al., 1998, 1 M NaCl, pH 7).
 
+    Parameters
+    ----------
+    sequence : str
+        5'→3' RNA sequence containing only A,U,G,C
+        (any 'T' is treated as 'U').
+    strand_conc : float, optional
+        Total concentration of *single* strands in mol L⁻¹
+        (default = 0.2 mM).
 
+    Returns
+    -------
+    float
+        Predicted melting temperature in °C.
+    """
 
-def calculate_Tm(sequence: str, ct_molar: float = 1e-6, na_molar: float = 0.15):  # 1, 
+    # ----------------- helper utilities (scope-local) ---------------- #
+    def _complement(base: str) -> str:
+        return {"A": "U", "U": "A", "T": "A", "G": "C", "C": "G"}[base]
 
-    NN = {
-    'AA': (6.82, 19.0),  'AU': (9.38, 26.7),  'UA': (7.69, 20.5),  'CA': (10.44, 26.9),
-    'CU': (10.48, 27.1), 'GA': (12.44, 32.5), 'GC': (15.37, 41.2), 'GG': (15.37, 41.2),
-    'GU': (11.36, 29.5), 'UG': (11.36, 29.5), 'UU': (6.82, 19.0),  'AG': (12.44, 32.5),
-    'AC': (10.44, 26.9), 'CG': (14.88, 36.9), 'UC': (10.48, 27.1), 'CC': (15.37, 41.2)
+    def _dimer_key(x: str, y: str) -> str:
+        """
+        Return the canonical key for dimer XY | WV.
+        Orientation is chosen so the key matches the 10 entries in NN_PARAMS.
+        """
+        # canonical orientation
+        key1 = f"{x}{y}/{_complement(x)}{_complement(y)}"
+        if key1 in NN_PARAMS:
+            return key1
+        # reverse-complement orientation (covers the remaining 6 XY steps)
+        key2 = f"{_complement(y)}{_complement(x)}/{y}{x}"
+        if key2 in NN_PARAMS:
+            return key2
+        raise ValueError(f"Unrecognized nearest-neighbor step: {x}{y}")
+
+    def _count_terminal_au(seq: str) -> int:
+        """
+        Count AU or UA base pairs at each duplex end (0, 1 or 2).
+        """
+        first_pair = {seq[0], _complement(seq[-1])}
+        last_pair  = {seq[-1], _complement(seq[0])}
+        return sum(pair <= {"A", "U"} for pair in (first_pair, last_pair))
+
+    def _nearest_neighbor_sum(seq: str) -> Tuple[float, float]:
+        """
+        Sum ΔH and ΔS (kcal mol⁻¹  /  cal K⁻¹ mol⁻¹) over (n-1) stacked dimers.
+        """
+        dH = dS = 0.0
+        for i in range(len(seq) - 1):
+            h, s = NN_PARAMS[_dimer_key(seq[i], seq[i + 1])]
+            dH += h
+            dS += s
+        return dH, dS
+    # ---------------------------------------------------------------- #
+
+    # ---- constants ---- #
+    R = 1.987  # cal K⁻¹ mol⁻¹
+
+    NN_PARAMS = {
+        "AA/UU": (-6.82, -19.0),
+        "AU/UA": (-9.38, -26.7),
+        "UA/AU": (-7.69, -20.5),
+        "CU/GA": (-10.48, -27.1),
+        "CA/GU": (-10.44, -26.9),
+        "GU/CA": (-11.40, -29.5),
+        "GA/CU": (-12.44, -32.5),
+        "CG/GC": (-10.64, -26.7),
+        "GG/CC": (-13.39, -32.7),
+        "GC/CG": (-14.88, -36.9),
     }
 
-    R = 1.987  # cal mol-1 K-1
-    INIT_H, INIT_S = 3.61, 11.6           # initiation
-    AU_END_H, AU_END_S = 0.45, 1.6        # AU/UA end penalty
+    INITIATION = ( +3.61,  -1.5)   # ΔH (kcal), ΔS (cal K⁻¹)
+    TERMINAL_AU = (+3.72, +10.5)   # penalty per AU/UA end
+
+    # ---- input sanitization ---- #
+    seq = sequence.upper().replace("T", "U")
+    if not (19 <= len(seq) <= 23):
+        raise ValueError("Sequence length must be 19–23 nt for siRNA.")
+    if any(b not in "AUGC" for b in seq):
+        raise ValueError("Sequence contains invalid nucleotides (allowed: A,U,G,C).")
+
+    # ---- thermodynamic sums ---- #
+    dH, dS = _nearest_neighbor_sum(seq)            # nearest-neighbor stacks
+    dH += INITIATION[0];  dS += INITIATION[1]      # initiation
+    n_au = _count_terminal_au(seq)                 # terminal AU penalties
+    dH += n_au * TERMINAL_AU[0]
+    dS += n_au * TERMINAL_AU[1]
+
+    # ---- convert & compute Tm ---- #
+    dH_cal = dH * 1000.0                           # kcal → cal
+    Tm_K = dH_cal / (dS + R * math.log(strand_conc / 4.0))  # a = 4 (non-self-comp.)
+    return Tm_K - 273.15
 
 
-    seq = sequence.upper().replace('T', 'U')
-    dh = INIT_H  # kcal
-    ds = INIT_S  # cal/K
-
-    # stacking contributions
-    for dinuc in (seq[i:i+2] for i in range(len(seq)-1)):
-        h, s = NN[dinuc]
-        dh += h
-        ds += s
-
-    # AU / UA at each end
-    for end in (seq[0:2], seq[-2:]):
-        if end in ('AU', 'UA'):
-            dh += AU_END_H
-            ds += AU_END_S
-
-    dh *= 1000  # → cal
-    ln_ct = math.log(ct_molar/4.0)     # duplex, non-self-compl.
-    tm_k = dh / (ds + R*ln_ct)
-    tm_c = tm_k - 273.15
-    # monovalent-salt correction
-    tm_c += 16.6 * math.log10(na_molar)
-    return round(tm_c, 2)
 
 
 
