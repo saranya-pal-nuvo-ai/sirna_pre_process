@@ -38,10 +38,10 @@ if __name__ == '__main__':
     mode = args.mode
 
     df_pre = extract_accessibility_df(FASTA_FILE_PATH, N, mode, OUTPUT_DIR)
-    df_pre_process = Filters(df_pre).compute_confidence()
+    df_pre_process = Filters(df_pre).compute_confidence()                       # df_Pre_process will have sense and antisense both...!!
     df = perform_inference(df_pre_process, mRNA_seq, MODELS_DIR, CACHE_PATH)
     df = df.reset_index(drop=True)
 
     print(df.head(10))
 
-    df.to_csv(OUTPUT_DIR + "/" + "SERPINC1_v7.csv", index=False)
+    df.to_csv(OUTPUT_DIR + "/" + "TTR.csv", index=False)

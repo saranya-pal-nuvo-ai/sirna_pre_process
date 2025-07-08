@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from src.AttSioff.model import RNAFM_SIPRED_2
 from torch.nn.utils.rnn import pad_sequence
 from src.AttSioff.utils import get_gc_sterch, get_gc_percentage, get_single_comp_percent, get_di_comp_percent, get_tri_comp_percent
-from src.AttSioff.utils import secondary_struct, score_seq_by_pssm, gibbs_energy, create_pssm, calculate_Tm
+from src.AttSioff.utils import secondary_struct, score_seq_by_pssm, gibbs_energy, create_pssm, calculate_Tm, free_energy_5_end
 
 
 
@@ -148,8 +148,7 @@ def input_to_inference(inp_df, mRNA_seq):
         """Return 20 nt upstream + 19 nt site + 20 nt downstream (59 nt total)."""
         i = start_pos - 1                      # convert to 0-based index
         return mrna_seq[i - UP_LEN : i + SI_LEN + DOWN_LEN]
-
-
+    
 
     for nt in mRNA_seq:
         if nt == 'T':
@@ -171,7 +170,7 @@ def input_to_inference(inp_df, mRNA_seq):
     df = inp_df.loc[valid_starts].copy()    
 
     df["mrna"] = df["Start_Position"].apply(extract_segment)
-    df = df[['Antisense', 'mrna', 'Start_Position', 'Accessibility_Prob', 'Ui-Tei_Norm', 'Reynolds_Norm', 'Amarzguioui_Norm', 'Confidence_Score']]
+    df = df[['Sense', 'Antisense', 'mrna', 'Start_Position', 'Accessibility_Prob', 'Ui-Tei_Norm', 'Reynolds_Norm', 'Amarzguioui_Norm', 'Confidence_Score']]
     # df = df.rename(columns={'Antisense_siRNA': 'Antisense'})
 
     return df, UP_LEN, SI_LEN, DOWN_LEN, MRNA_LEN
@@ -181,8 +180,7 @@ def input_to_inference(inp_df, mRNA_seq):
 
 
 
-def load_RNAFM_and_data(data_pre, mRNA_seq, CACHE_PATH):
-    
+def load_RNAFM_and_data(data_pre, mRNA_seq, CACHE_PATH):    
 
     data, UP_LEN, SI_LEN, DOWN_LEN, MRNA_LEN = input_to_inference(data_pre, mRNA_seq)
 
@@ -190,13 +188,14 @@ def load_RNAFM_and_data(data_pre, mRNA_seq, CACHE_PATH):
     model, alphabet, batch_converter = load_rna_fm_fast(cache_model_path)
     
     model.eval()
+    sense_seq = data['Sense'].to_list()
     siRNA_seq, mRNA_seq = data['Antisense'].to_list(), data['mrna'].to_list()
     # mRNA_seq = ['ACAGAAGTCCACTCATTCTTGGCAGGATGGCTTCTCATCGTCTGCTCCTCCTCTGCCTTGCTGGACTGGTATTTGTGTCTGAGGCTGGCCCTACGGGCACCGGTGAATCCAAGTGTCCTCTGATGGTCAAAGTTCTAGATGCTGTCCGAGGCAGTCCTGCCATCAATGTGGCCGTGCATGTGTTCAGAAAGGCTGCTGATGACACCTGGGAGCCATTTGCCTCTGGGAAAACCAGTGAGTCTGGAGAGCTGCATGGGCTCACAACTGAGGAGGAATTTGTAGAAGGGATATACAAAGTGGAAATAGACACCAAATCTTACTGGAAGGCACTTGGCATCTCCCCATTCCATGAGCATGCAGAGGTGGTATTCACAGCCAACGACTCCGGCCCCCGCCGCTACACCATTGCCGCCCTGCTGAGCCCCTACTCCTATTCCACCACGGCTGTCGTCACCAATCCCAAGGAATGAGGGACTTCTCCTCCAGTGGACCTGAAGGACGAGGGATGGGATTTCATGTAACCAAGAGTATTCCATTTTTACTAAAGCAGTGTTTTCACCTCATATGCTATGTTAGAAGTCCAGGCAGAGACAATAAAACATTCCTGTGAAAGGCA']
 
     siRNA_embeddings = generate_embeddings(siRNA_seq, model, alphabet, batch_converter)
     mRNA_embeddings = generate_embeddings(mRNA_seq, model, alphabet, batch_converter)
 
-    return siRNA_seq, siRNA_embeddings, mRNA_embeddings, UP_LEN, SI_LEN, DOWN_LEN, MRNA_LEN
+    return sense_seq, siRNA_seq, siRNA_embeddings, mRNA_embeddings, UP_LEN, SI_LEN, DOWN_LEN, MRNA_LEN
 
 
 
@@ -253,7 +252,8 @@ def perform_inference(df_pre, mRNA_seq, MODEL_PATH, CACHE_PATH):
 
     print(f"Loaded model weights from {MODEL_PATH}")
     
-    siRNA_seq, siRNA_embeds, mRNA_embeds, UP_LEN, SI_LEN, DOWN_LEN, MRNA_LEN = load_RNAFM_and_data(df_pre, mRNA_seq, CACHE_PATH)
+    # siRNA_seq => AS_seq
+    sense_seq, siRNA_seq, siRNA_embeds, mRNA_embeds, UP_LEN, SI_LEN, DOWN_LEN, MRNA_LEN = load_RNAFM_and_data(df_pre, mRNA_seq, CACHE_PATH)
     sirna_embed_tensor = process_siRNA_embeds(siRNA_embeds)   # [B, L_max1, D]
     mrna_embed_tensor  = process_mRNA_embeds(mRNA_embeds)    # [B, L_max2, D]
     siRNA_seq = siRNA_seq
@@ -303,6 +303,7 @@ def perform_inference(df_pre, mRNA_seq, MODEL_PATH, CACHE_PATH):
     )
 
     out_df = pd.DataFrame({
+        "Sense": sense_seq,
         "Antisense": siRNA_seq,
         "Start_Position": meta_df['Start_Position'],
         "Accessibility_Prob": meta_df['Accessibility_Prob'],
@@ -315,6 +316,7 @@ def perform_inference(df_pre, mRNA_seq, MODEL_PATH, CACHE_PATH):
     })
 
 
+    #   Compute Biological Factors....
     out_df['GC Percent'] = (
         out_df['GC Percent']
         .apply(lambda v: float(np.squeeze(v)))   # np.squeeze removes all singleton dims/lists
@@ -326,6 +328,12 @@ def perform_inference(df_pre, mRNA_seq, MODEL_PATH, CACHE_PATH):
     )
 
 
+    out_df['Free_energy_5_end'] = out_df.apply(
+        lambda row: free_energy_5_end(row['Antisense'], row['Sense'], n=4),
+        axis=1
+    )
+
+    out_df = out_df.drop(columns='Sense', axis=1)
     out_df = out_df.sort_values(by='Predicted_inhibition', ascending=False)
 
     print("Inference complete")

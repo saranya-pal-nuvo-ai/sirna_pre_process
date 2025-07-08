@@ -12,6 +12,11 @@ import os
 from typing import Tuple, Optional
 
 
+def free_energy_of_left_end(as_seq, len=5):
+    seq = as_seq[:len]
+    
+
+
 
 def calculate_Tm(sequence: str,
                  strand_conc: float = 2.0e-4,
@@ -107,6 +112,10 @@ def calculate_Tm(sequence: str,
 
 
 
+
+
+
+
 def readFaRNAFOLD(fa):
 	'''
 	加载预处理好的mrna全长的rnafold预测结果
@@ -192,6 +201,39 @@ def score_seq_by_pssm(pssm, seq):  # 1,
     scores = [pssm[nt_order[nt], i] for nt, i in zip(seq, ind_all)]
     log_score = sum([-math.log2(i) for i in scores])
     return np.array([log_score])[:, np.newaxis]
+
+
+
+def free_energy_5_end(antisense: str, sense: str, n: int = 4) -> float:
+    _A, _C, _G, _U = range(4)  
+    _dg37 = np.array(                           # Turner 2004 internal nearest‑neighbor ΔG° at 37 °C
+        [[-0.93, -2.24, -2.08, -1.10],
+        [-2.11, -3.26, -2.36, -2.08],
+        [-2.35, -3.42, -3.26, -2.24],
+        [-1.33, -2.35, -2.11, -0.93]]
+    )
+
+    sense = sense.replace('T', 'U')
+
+    _code = {"A": _A, "C": _C, "G": _G, "U": _U}
+
+
+    if n < 1 or n >= len(antisense):
+        raise ValueError("n must satisfy 1 ≤ n ≤ len(sequence)-1")
+
+    try:
+        pairs = [
+            _dg37[_code[antisense[i]], _code[sense[-(i + 1)]]]  # antiparallel pairing
+            for i in range(n)
+        ]
+    except KeyError as exc:
+        raise ValueError(
+            f"Invalid nucleotide '{exc.args[0]}'; only A, U, G, C allowed."
+        ) from None
+
+    return round(float(np.sum(pairs)), 3)
+
+
 
 
 def gibbs_energy(seq):  # 20    #    
