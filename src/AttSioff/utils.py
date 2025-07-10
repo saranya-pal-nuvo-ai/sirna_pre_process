@@ -10,104 +10,24 @@ import sklearn
 import subprocess
 import os
 from typing import Tuple, Optional
-
-
-def free_energy_of_left_end(as_seq, len=5):
-    seq = as_seq[:len]
+from Bio.Seq import Seq
+from Bio.SeqUtils import MeltingTemp as mt
     
 
 
 
-def calculate_Tm(sequence: str,
-                 strand_conc: float = 2.0e-4,
-                 start_pos: int = 0,
-                 end_pos: Optional[int] = None) -> float:
-    """
-    Melting temperature (°C) of an RNA duplex segment using the
-    INN-HB nearest-neighbor model (Xia et al., 1998; 1 M NaCl, pH 7).
-
-    Parameters
-    ----------
-    sequence   : full 5'→3' RNA (A,U,G,C; T→U is accepted)
-    strand_conc: total single-strand concentration (M), default 0.2 mM
-    start_pos  : 0-based index of first base to include (default 0)
-    end_pos    : index *after* the last base (Python-slice style).
-                 Default = len(sequence).
-
-    Notes
-    -----
-    • Validated lengths: 4–10 nt (paper); practical use up to 23 nt
-      is common but unverified.
-    • For internal windows the result is for an isolated mini-duplex.
-
-    Warning
-    -------
-    The INN-HB parameters are rock-solid for 4–10 bp duplexes in 1 M NaCl.
-    For full-length siRNA (19–23 bp) or for internal 6–8 bp windows you obtain a reasonable first approximation, but there is no experimental proof the ±1.3 °C error still holds.
-    
-    """
-
+def calculate_Tm(sequence: str, start_pos: int = 0, end_pos: Optional[int] = None) -> float:
 
     seq_full = sequence.upper().replace('T', 'U')
     end_pos = len(seq_full) if end_pos is None else end_pos
-
-    if not 0 <= start_pos < end_pos <= len(seq_full):
-        raise ValueError("start_pos/end_pos indices out of range")
     seq = seq_full[start_pos:end_pos]
-    if len(seq) < 4:
-        raise ValueError("Sub-duplex must be at least 4 nt long")
-    if any(b not in "AUGC" for b in seq):
-        raise ValueError("Invalid nucleotide in sequence")
 
+    seq_new = Seq(seq)
 
-
-    R = 1.987  # cal K⁻¹ mol⁻¹
-    NN = {     # ΔH (kcal mol⁻¹), ΔS (cal K⁻¹ mol⁻¹)
-        "AA/UU": (-6.82, -19.0), "AU/UA": (-9.38, -26.7),
-        "UA/AU": (-7.69, -20.5), "CU/GA": (-10.48, -27.1),
-        "CA/GU": (-10.44, -26.9), "GU/CA": (-11.40, -29.5),
-        "GA/CU": (-12.44, -32.5), "CG/GC": (-10.64, -26.7),
-        "GG/CC": (-13.39, -32.7), "GC/CG": (-14.88, -36.9),
-    }
-    INIT   = (+3.61,  -1.5)   
-    TERM_AU = (+3.72, +10.5) 
-
-
-    comp = {"A":"U","U":"A","G":"C","C":"G"}
-
-    def dimer_key(x: str, y: str) -> str:
-        """Return a key that is guaranteed to be in NN."""
-        key = f"{x}{y}/{comp[x]}{comp[y]}"
-        if key in NN:
-            return key
-     
-        key_rc = f"{comp[y]}{comp[x]}/{y}{x}"
-        if key_rc in NN:
-            return key_rc
-        raise ValueError(f"Unrecognised dimer {x}{y}")
- 
-
-
-    def terminal_au_penalty(s: str) -> int:
-        return int(s[0] in "AU") + int(s[-1] in "AU")
-
-
-    dH = dS = 0.0
-    for i in range(len(seq) - 1):
-        key = dimer_key(seq[i], seq[i+1])
-        try:
-            h, s = NN[key]
-        except KeyError:
-            raise ValueError(f"Unrecognized dimer {key}")
-        dH += h; dS += s
-
-   
-
-    dH += INIT[0] + terminal_au_penalty(seq) * TERM_AU[0]
-    dS += INIT[1] + terminal_au_penalty(seq) * TERM_AU[1]
-    Tm_K = (dH*1000.0) / (dS + R*math.log(strand_conc/4.0))
-
-    return Tm_K - 273.15
+    # a = mt.Tm_NN(seq_new, nn_table=mt.RNA_NN1)
+    # b = mt.Tm_NN(seq_new, nn_table=mt.RNA_NN2)
+    c = mt.Tm_NN(seq_new, nn_table=mt.RNA_NN3)
+    return c
 
 
 
@@ -205,34 +125,13 @@ def score_seq_by_pssm(pssm, seq):  # 1,
 
 
 def free_energy_5_end(antisense: str, sense: str, n: int = 4) -> float:
-    _A, _C, _G, _U = range(4)  
-    _dg37 = np.array(                           # Turner 2004 internal nearest‑neighbor ΔG° at 37 °C
-        [[-0.93, -2.24, -2.08, -1.10],
-        [-2.11, -3.26, -2.36, -2.08],
-        [-2.35, -3.42, -3.26, -2.24],
-        [-1.33, -2.35, -2.11, -0.93]]
-    )
-
-    sense = sense.replace('T', 'U')
-
-    _code = {"A": _A, "C": _C, "G": _G, "U": _U}
+    return RNA.duplexfold(antisense[:n], sense[-n:]).energy
 
 
-    if n < 1 or n >= len(antisense):
-        raise ValueError("n must satisfy 1 ≤ n ≤ len(sequence)-1")
 
-    try:
-        pairs = [
-            _dg37[_code[antisense[i]], _code[sense[-(i + 1)]]]  # antiparallel pairing
-            for i in range(n)
-        ]
-    except KeyError as exc:
-        raise ValueError(
-            f"Invalid nucleotide '{exc.args[0]}'; only A, U, G, C allowed."
-        ) from None
-
-    return round(float(np.sum(pairs)), 3)
-
+def free_energy_3_end(antisense: str, sense: str, n: int = 4) -> float:
+#     # return RNA.duplexfold(sense[:n], antisense[:n]).energy
+    return RNA.duplexfold(sense[:n], antisense[-n:]).energy
 
 
 

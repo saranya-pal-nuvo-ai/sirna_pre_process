@@ -333,7 +333,7 @@ def perform_inference(df_pre, mRNA_seq, MODEL_PATH, CACHE_PATH):
         axis=1
     )
 
-    out_df = out_df.drop(columns='Sense', axis=1)
+    # out_df = out_df.drop(columns='Sense', axis=1)
     out_df = out_df.sort_values(by='Predicted_inhibition', ascending=False)
 
     print("Inference complete")
