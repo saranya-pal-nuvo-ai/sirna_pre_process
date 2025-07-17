@@ -12,9 +12,7 @@ import os
 
 
 def readFaRNAFOLD(fa):
-	'''
-	加载预处理好的mrna全长的rnafold预测结果
-	'''
+     
 	with open(fa,'r') as FA:
 		seqName,seq='',''
 		while 1:
