@@ -28,7 +28,7 @@ def run_blast_db_script(blast_db_prefix):
             print(e.stderr)
             raise
 
-def offtarget(inference_csv_path , output_csv_path):
+def offtarget(inference_csv_path):
     config = load_config()
     paths = config["paths"]
     params = config["parameters"]
@@ -59,16 +59,17 @@ def offtarget(inference_csv_path , output_csv_path):
     )
 
     # Step 5: Process tsv
-    process_blast_results(
+    final_df=process_blast_results(
         blast_tsv_path=paths["BLAST_OUTPUT_TSV"],
         sirna_fasta_path=paths["SIRNA_FASTA_PATH"],
         inference_path=inference_csv_path,
         siRNA_OTE_Summary_path=paths["siRNA_OTE_summary_output_path"],
         siRNA_OTE_Summary_ntseq_output_path=paths["siRNA_OTE_ntseq_added_output_path"],
-        design_output_path= output_csv_path
     )
 
     print("✅ Entire siRNA pipeline executed successfully.")
+
+    return final_df
 
 
 

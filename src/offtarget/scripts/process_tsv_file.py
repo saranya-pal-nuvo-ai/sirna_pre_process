@@ -10,7 +10,6 @@ def process_blast_results(
     inference_path,
     siRNA_OTE_Summary_path,
     siRNA_OTE_Summary_ntseq_output_path,
-    design_output_path
 ):
     # Step 1: Load BLAST TSV
     df = pd.read_csv(blast_tsv_path, sep='\t', header=None,
@@ -65,7 +64,8 @@ def process_blast_results(
     if 'SNo' in df_final.columns:
         df_final = df_final.drop(columns=['SNo'])
 
-    df_final.to_csv(design_output_path, index=False)
+    # df_final.to_csv(design_output_path, index=False)
 
-    print("✅ siRNA_Design.csv created !!.")
-    print("✅ All OT processing steps completed successfully.")
+    print("✅ siRNA_Design.csv created successfully.")
+
+    return df_final
