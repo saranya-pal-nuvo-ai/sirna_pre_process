@@ -1,5 +1,4 @@
 import pdb
-import math
 import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
@@ -9,12 +8,9 @@ import RNA      # Error
 import sklearn
 import subprocess
 import os
-from typing import Tuple, Optional
 from Bio.Seq import Seq
 from Bio.SeqUtils import MeltingTemp as mt
-    
-
-
+from typing import Tuple, Optional
 
 def calculate_Tm(sequence: str, start_pos: int = 0, end_pos: Optional[int] = None) -> float:
 
@@ -29,10 +25,33 @@ def calculate_Tm(sequence: str, start_pos: int = 0, end_pos: Optional[int] = Non
     c = mt.Tm_NN(seq_new, nn_table=mt.RNA_NN3)
     return c
 
+def free_energy_5_end(antisense: str, sense: str, n: int = 4) -> float:
+    return RNA.duplexfold(antisense[:n], sense[-n:]).energy
 
 
+def free_energy_3_end(antisense: str, sense: str, n: int = 4) -> float:
+#     # return RNA.duplexfold(sense[:n], antisense[:n]).energy
+    return RNA.duplexfold(sense[:n], antisense[-n:]).energy
 
 
+def gc_ratio_5_3(seq: str, n: int = 4) -> float:
+
+    if len(seq) < 10:
+        raise ValueError("Sequence must be at least 10 nucleotides long.")
+
+    sequence = seq.upper()
+
+    five_prime_end = sequence[:n]
+    three_prime_end = sequence[-n:]
+
+    gc_5_prime_count = five_prime_end.count('G') + five_prime_end.count('C')
+    gc_3_prime_count = three_prime_end.count('G') + three_prime_end.count('C')
+
+    gc_5_prime_fraction = gc_5_prime_count / n
+    gc_3_prime_fraction = gc_3_prime_count / n
+
+    score = ((1 - gc_5_prime_fraction) + gc_3_prime_fraction) * 100 / 2
+    return round(score, 2)
 
 
 
@@ -122,30 +141,15 @@ def score_seq_by_pssm(pssm, seq):  # 1,
     log_score = sum([-math.log2(i) for i in scores])
     return np.array([log_score])[:, np.newaxis]
 
-
-
-def free_energy_5_end(antisense: str, sense: str, n: int = 4) -> float:
-    return RNA.duplexfold(antisense[:n], sense[-n:]).energy
-
-
-
-def free_energy_3_end(antisense: str, sense: str, n: int = 4) -> float:
-#     # return RNA.duplexfold(sense[:n], antisense[:n]).energy
-    return RNA.duplexfold(sense[:n], antisense[-n:]).energy
-
-
-
-def gibbs_energy(seq):  # 20    #    
-
+def gibbs_energy(seq):  # 20 
     energy_dict = {'A': 0, 'C': 1, 'G': 2, 'U': 3, 'table': np.array(
         [[-0.93, -2.24, -2.08, -1.1],
          [-2.11, -3.26, -2.36, -2.08],
          [-2.35, -3.42, -3.26, -2.24],
          [-1.33, -2.35, -2.11, -0.93]])}
-    
 
     result = []
-    for i in range(len(seq) - 1): 
+    for i in range(len(seq)-1):
         index_1 = energy_dict.get(seq[i])
         index_2 = energy_dict.get(seq[i + 1])
         result.append(energy_dict['table'][index_1, index_2])

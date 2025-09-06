@@ -176,37 +176,7 @@ def input_to_inference(inp_df, mrna_path='/home/somya/drugdiscovery/siRNA/sirna_
     return df
 
 
-
-
-
-
-def load_RNAFM_and_data(df):
-
-    data = input_to_inference(df)
-
-    # data = pd.read_csv(data_path)
-    # n = len(data)
-
-    cache_model_path = check_model_cache()
-    model, alphabet, batch_converter = load_rna_fm_fast(cache_model_path)
-    
-    model.eval()
-    siRNA_seq, mRNA_seq = data['Antisense'].to_list(), data['mrna'].to_list()
-    # mRNA_seq = ['ACAGAAGTCCACTCATTCTTGGCAGGATGGCTTCTCATCGTCTGCTCCTCCTCTGCCTTGCTGGACTGGTATTTGTGTCTGAGGCTGGCCCTACGGGCACCGGTGAATCCAAGTGTCCTCTGATGGTCAAAGTTCTAGATGCTGTCCGAGGCAGTCCTGCCATCAATGTGGCCGTGCATGTGTTCAGAAAGGCTGCTGATGACACCTGGGAGCCATTTGCCTCTGGGAAAACCAGTGAGTCTGGAGAGCTGCATGGGCTCACAACTGAGGAGGAATTTGTAGAAGGGATATACAAAGTGGAAATAGACACCAAATCTTACTGGAAGGCACTTGGCATCTCCCCATTCCATGAGCATGCAGAGGTGGTATTCACAGCCAACGACTCCGGCCCCCGCCGCTACACCATTGCCGCCCTGCTGAGCCCCTACTCCTATTCCACCACGGCTGTCGTCACCAATCCCAAGGAATGAGGGACTTCTCCTCCAGTGGACCTGAAGGACGAGGGATGGGATTTCATGTAACCAAGAGTATTCCATTTTTACTAAAGCAGTGTTTTCACCTCATATGCTATGTTAGAAGTCCAGGCAGAGACAATAAAACATTCCTGTGAAAGGCA']
-
-    siRNA_embeddings = generate_embeddings(siRNA_seq, model, alphabet, batch_converter)
-    mRNA_embeddings = generate_embeddings(mRNA_seq, model, alphabet, batch_converter)
-
-    return siRNA_seq, siRNA_embeddings, mRNA_embeddings
-
-    
-
-
-
-
-
-
-
+  
 def prepare_prior_knowledge_features(sirna_seq_list):
 
     gc_sterch, gc_precent = [], []
@@ -259,10 +229,36 @@ def perform_inference(pre_df):
 
     print(f"Loaded model weights from {best_ckpt_path}")
 
-    siRNA_seq, siRNA_embeds, mRNA_embeds = load_RNAFM_and_data(pre_df)
+    valid_df = input_to_inference(pre_df)
+
+    # if nothing valid, just return pre_df with empty column
+    out_df = pre_df.copy()
+    out_df["Predicted_inhibition"] = pd.NA
+    if valid_df.empty:
+        print("No valid rows for inference under current constraints.")
+        return out_df
+    
+    siRNA_seq = valid_df['Antisense'].tolist()
+    mRNA_seq  = valid_df['mrna'].tolist()
+
+    cache_model_path = check_model_cache()
+    rnafm_model, alphabet, batch_converter = load_rna_fm_fast(cache_model_path)
+    rnafm_model.eval()
+
+    siRNA_embeds = generate_embeddings(siRNA_seq, rnafm_model, alphabet, batch_converter)
+    mRNA_embeds  = generate_embeddings(mRNA_seq,  rnafm_model, alphabet, batch_converter)
+
     sirna_embed_tensor = process_siRNA_embeds(siRNA_embeds)[:NUM_EXAMPLES]   # [B, L_max1, D]
     mrna_embed_tensor  = process_mRNA_embeds(mRNA_embeds)[:NUM_EXAMPLES]     # [B, L_max2, D]
-    siRNA_seq = siRNA_seq[:NUM_EXAMPLES]
+    siRNA_seq          = siRNA_seq[:NUM_EXAMPLES]
+    valid_index_slice  = valid_df.index[:NUM_EXAMPLES]  # aligns predictions back to original rows
+
+
+    # siRNA_seq, siRNA_embeds, mRNA_embeds = load_RNAFM_and_data(pre_df)
+    # sirna_embed_tensor = process_siRNA_embeds(siRNA_embeds)[:NUM_EXAMPLES]   # [B, L_max1, D]
+    # mrna_embed_tensor  = process_mRNA_embeds(mRNA_embeds)[:NUM_EXAMPLES]     # [B, L_max2, D]
+    # siRNA_seq = siRNA_seq[:NUM_EXAMPLES]
+
 
 
     gc_sterch, gc_precent, single_com, di_com, tri_com, second_struct, pssm_score, gibbs = prepare_prior_knowledge_features(siRNA_seq)
@@ -296,24 +292,10 @@ def perform_inference(pre_df):
             score = model(inp)          
             preds.append(score.item())
 
-    data = input_to_inference(pre_df)
-    out_df = pd.DataFrame({
-        "Antisense": siRNA_seq,
-        "Predicted_inhibition": preds,
-        'Accessibility_Prob':data['Accessibility_Prob'],
-        'Start_Position':data['Start_Position'],
-        'Sense':data['Sense'],
-        'Antisense':data['Antisense'],
-        'Ui-Tei_Norm':data['Ui-Tei_Norm'],
-        'Reynolds_Norm':data['Reynolds_Norm'],
-        'Amarzguioui_Norm':data['Amarzguioui_Norm'],
-        'Confidence_Score':data['Confidence_Score']
-    })
+    out_df.loc[valid_index_slice, "Predicted_inhibition"] = preds
 
     print("Inference complete")
-
     return out_df
-
 
 
 
@@ -324,4 +306,4 @@ if __name__ == '__main__':
     results_dir = Path("sirna_pre_process/")
     results_dir.mkdir(parents=True, exist_ok=True)
     df.to_csv(results_dir / "inference_results.csv", index=False)
-    print(f"Saved inference results to {results_dir / 'inference_results.csv'}")
+    print(f"Saved inference results to {results_dir / 'inference_results_Latest.csv'}")

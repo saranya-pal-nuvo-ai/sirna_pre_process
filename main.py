@@ -1,30 +1,41 @@
 import argparse
 import pandas as pd
-from src.Preprocess.Preprocessing import extract_accessibility_df
 from src.Preprocess.Preprocessing import Filters
 from src.Preprocess.Preprocessing import combine
 from src.AttSioff.inference import perform_inference
-from src.offtarget.scripts.offtarget_main import offtarget
-from src.AttSioff.utils import calculate_Tm, get_gc_percentage
+from src.AttSioff.utils import calculate_Tm, get_gc_percentage, free_energy_5_end, gc_ratio_5_3, free_energy_3_end
 
 
 if __name__ == '__main__':
     # fasta_path = 'sirna_pre_process/data/TTR_mrna.fasta'
 
-    df_pre_processed , fasta_file = combine()
-    fasta_name= fasta_file.split('.')[0]  # Extract the name without extension
-    print(df_pre_processed.columns)
-    df = perform_inference(df_pre_processed)
+    df , fasta_file, length= combine()
+    fasta_name= fasta_file.split('.')[0]  
+    print(df.columns)
 
-    df.to_csv(f'data/{fasta_name}_results.csv', index=False)
+    if length==19:
+        df = perform_inference(df)
+
+    df['Tm_value'] = df['Antisense'].apply(calculate_Tm)
+    df['GC_content'] = df['Antisense'].apply(
+    lambda seq: get_gc_percentage(seq)[0][0]
+    )
+    df['seed_Tm'] = df['Antisense'].apply(calculate_Tm, start_pos=1, end_pos=9)
+    df['free_energy_5_end'] = df.apply(
+    lambda row: free_energy_5_end(row['Antisense'], row['Sense'], n=4),
+    axis=1
+    )
+    df['free_energy_3_end'] = df.apply(
+    lambda row: free_energy_3_end(row['Antisense'], row['Sense'], n=4),
+    axis=1
+    )
+    df['gc_ratio_5_3'] = df.apply(
+    lambda row: gc_ratio_5_3(row['Antisense'], n=4),
+    axis=1
+    )
 
 
-    # Run off-target analysis
-    df_offtarget=offtarget(inference_csv_path=f'data/{fasta_name}_results.csv')
 
-    df_offtarget['Tm_value'] = df_offtarget['Antisense'].apply(calculate_Tm)
-    df_offtarget['GC_content'] = df_offtarget['Antisense'].apply(get_gc_percentage)
-
-    df_offtarget.to_csv(f'output_csv/{fasta_name}_siRNA_Design.csv', index=False)
+    df.to_csv(f'output_csv/{fasta_name}_siRNA_{length}.csv', index=False)
 
     print(f"✅ Inference results saved to sirna_pre_process/data/{fasta_name}_results.csv ({len(df)} rows)")

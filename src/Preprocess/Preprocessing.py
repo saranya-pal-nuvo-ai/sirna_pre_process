@@ -3,6 +3,7 @@ import subprocess
 import pandas as pd
 import itertools
 import math
+import numpy as np
 
 # ─── Utility: RNAplfold wrapper ───────────────────────────────────────────────
 
@@ -57,7 +58,25 @@ def run_rnaplfold(fasta_file, window=80, span=40, max_unpaired=None, out_dir=Non
     print(f"✅ Moved '{lunp_file}' → '{lunp_target}'")
     print(f"✅ Moved '{ps_file}' → '{ps_target}'")
 
-    return lunp_target, ps_target
+    #Convert an RNAplfold _lunp file to a pandas DataFrame.
+    records = []
+    with open(lunp_target) as fh:
+        for line in fh:
+            parts = line.split()
+            if not parts or not parts[0].isdigit():
+                continue
+            if len(parts) < max_unpaired + 1:
+                continue
+            pos0 = int(parts[0]) - 1
+            values = parts[1:max_unpaired+1]
+            # handle "NA" gracefully
+            values = [None if v == "NA" else float(v) for v in values]
+            records.append([pos0+1] + values)
+
+    cols = ["Start_Position"] + [f"u{l}" for l in range(1, max_unpaired+1)]
+
+    return pd.DataFrame(records, columns=cols)
+
 
 # ─── Parsing accessibility into DataFrame ─────────────────────────────────────
 
@@ -67,42 +86,42 @@ def get_complementary_rna(dna_seq):
     rna = dna_seq.replace("T", "U")
     return rna.translate(complement_map)[::-1]
 
-def extract_accessibility_df(fasta_file, siRNA_length, mode, out_dir=None):
-    """
-    Runs plfold, moves outputs into out_dir, parses .lunp, returns DataFrame.
-    """
-    lunp_path, _ = run_rnaplfold(fasta_file, max_unpaired=siRNA_length, out_dir=out_dir)
+def extract_accessibility_df(fasta_file, si_len,out_dir=None):
+
+    # Runs plfold, moves outputs into out_dir, parses .lunp, returns DataFrame.
+    df= run_rnaplfold(fasta_file, max_unpaired=si_len, out_dir=out_dir)
+
+    #calculating accessiblity score
+    keep = ["Start_Position", "u1", f"u{si_len}"]
+    df = df[keep].copy()
+
+    df["seed_mean"] = (
+        df["u1"]
+        .rolling(window=7, min_periods=7)
+        .mean()
+        .shift(periods=si_len-8, fill_value=0)
+    )
+    
+
+    df['Accessibility_Prob']= df[f'u{si_len}']*0.3 + df['seed_mean']*0.7
+
+    df.drop(columns=['u1', f'u{si_len}', 'seed_mean'], inplace=True)
+
+    df.drop(range(0, si_len-1), inplace=True)
+    df.reset_index(drop=True, inplace=True)
+    df['Start_Position'] = df['Start_Position'] - si_len + 1
+
+    # read sequence from fasta
     with open(fasta_file) as f:
         seq = ''.join(line.strip() for line in f if not line.startswith('>'))
 
-    records = []
-    with open(lunp_path) as fh:
-        for line in fh:
-            parts = line.split()
-            if not parts or not parts[0].isdigit():
-                continue
-            if len(parts) < siRNA_length + 1:
-                continue
-            pos0 = int(parts[0]) - 1
-            if pos0 + siRNA_length > len(seq):
-                continue
-            if mode == 'single':
-                val = parts[siRNA_length]
-                if val == 'NA': continue
-                prob = float(val)
-            else:
-                nums = [float(x) for x in parts[1:siRNA_length+1] if x != 'NA']
-                if not nums: continue
-                prob = math.prod(nums)
-            sense = seq[pos0:pos0+siRNA_length]
-            antisense = get_complementary_rna(sense)
-            records.append({
-                'Accessibility_Prob': prob,
-                'Start_Position': pos0+1,
-                'Sense': sense,
-                'Antisense': antisense
-            })
-    return pd.DataFrame(records)
+    # add Sense and Antisense columns
+    start=np.arange(0,len(seq)-si_len+1)
+    stop=start+si_len
+    df['Sense'] = [seq[s:e] for s,e in zip(start,stop)]
+    df['Antisense'] = df['Sense'].apply(get_complementary_rna)
+
+    return df
 
 # ─── Filters class ────────────────────────────────────────────────────────────
 
@@ -193,11 +212,8 @@ def combine():
 
     print("Using siRNA length:", N)
 
-    mode=input("Mode ('single' or 'joint'): ").strip().lower()
-    if mode not in('single','joint'): mode='joint'  # default to joint if invalid input
-
     # extract and place plfold outputs in data_folder
-    df_access=extract_accessibility_df(fasta_path,N,mode,out_dir=data_folder)
+    df_access=extract_accessibility_df(fasta_path,N,out_dir=data_folder)
     df_final=Filters(df_access).compute_confidence()
 
     save=input("Save output CSV? (yes/no): ").strip().lower()
@@ -205,9 +221,8 @@ def combine():
         out_csv=os.path.join(data_folder,'filter_score.csv')
         df_final.to_csv(out_csv,index=False)
         print(f"✅ Saved CSV to {out_csv} ({len(df_final)} rows)")
-    else:
         # print(df_final.to_string(index=False))
-        return df_final , fasta_file # return DataFrame for further processing if needed
+    return df_final , fasta_file, N # return DataFrame for further processing if needed
 
 if __name__=="__main__":
     combine()
